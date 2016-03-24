@@ -54,7 +54,7 @@ void experiment (bool enableCtsRts, uint32_t d1, uint32_t d2)
 
   // 1. Create 3 nodes 
   NodeContainer nodes;
-  nodes.Create (2);
+  nodes.Create (3);
 
   // 2. Place nodes somehow, this is required by every wireless simulation
   /*for (size_t i = 0; i < 3; ++i)
@@ -66,7 +66,7 @@ void experiment (bool enableCtsRts, uint32_t d1, uint32_t d2)
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
   positionAlloc->Add (Vector (0.0, 0.0, 0.0));
   positionAlloc->Add (Vector (d1, 0.0, 0.0));
-  //positionAlloc->Add (Vector (d2, 0.0, 0.0));
+  positionAlloc->Add (Vector (d2, 0.0, 0.0));
   //positionAlloc->Add (Vector (d2+d1, 0.0, 0.0));
   mobility.SetPositionAllocator (positionAlloc);
   mobility.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
@@ -91,7 +91,7 @@ void experiment (bool enableCtsRts, uint32_t d1, uint32_t d2)
   wifi.SetStandard (WIFI_PHY_STANDARD_80211a);
   wifi.SetRemoteStationManager ("ns3::ConstantRateWifiManager", 
                                 "DataMode",StringValue ("OfdmRate54Mbps"), 
-                                "ControlMode",StringValue ("OfdmRate6Mbps"));
+                                "ControlMode",StringValue ("OfdmRate54Mbps"));
   YansWifiPhyHelper wifiPhy =  YansWifiPhyHelper::Default ();
   wifiPhy.SetChannel (wifiChannel);
   wifiPhy.Set ("TxPowerStart", DoubleValue (15)); //potencia de transmissao de 32mW
@@ -115,18 +115,18 @@ void experiment (bool enableCtsRts, uint32_t d1, uint32_t d2)
   wifiMac.SetType ("ns3::ApWifiMac",
                    "Ssid", SsidValue (ssid));
   NetDeviceContainer apDevice = wifi.Install (wifiPhy, wifiMac, nodes.Get(1));
-  //wifiMac.SetType ("ns3::StaWifiMac",
-  //                 "Ssid", SsidValue (ssid),
-  //                 "ActiveProbing", BooleanValue (false));
+  wifiMac.SetType ("ns3::StaWifiMac",
+                   "Ssid", SsidValue (ssid),
+                   "ActiveProbing", BooleanValue (false));
   devices.Add (apDevice);
-  //devices.Add (wifi.Install (wifiPhy, wifiMac, nodes.Get(2)));
+  devices.Add (wifi.Install (wifiPhy, wifiMac, nodes.Get(2)));
 
   // uncomment the following to have athstats output
   // AthstatsHelper athstats;
   // athstats.EnableAthstats(enableCtsRts ? "basic-athstats-node" : "rtscts-athstats-node", nodes);
 
   // uncomment the following to have pcap output
-  //wifiPhy.EnablePcap (enableCtsRts ? "full-rtscts-pcap-node2" : "wifi-ap-teste1", nodes);
+  wifiPhy.EnablePcap (enableCtsRts ? "full-rtscts-pcap-node2" : "half-ap-forward-test", nodes);
 
   // 6. Install TCP/IP stack & assign IP addresses
   InternetStackHelper internet;
@@ -154,14 +154,14 @@ void experiment (bool enableCtsRts, uint32_t d1, uint32_t d2)
   // for Bug 388 and Bug 912
   // http://www.nsnam.org/bugzilla/show_bug.cgi?id=912
   // http://www.nsnam.org/bugzilla/show_bug.cgi?id=388
-  /*OnOffHelper onOffHelper2 ("ns3::UdpSocketFactory", InetSocketAddress (Ipv4Address ("10.0.0.1"), cbrPort));
+  OnOffHelper onOffHelper2 ("ns3::UdpSocketFactory", InetSocketAddress (Ipv4Address ("10.0.0.3"), cbrPort));
   onOffHelper2.SetAttribute ("PacketSize", UintegerValue (1000));
   onOffHelper2.SetAttribute ("OnTime",  StringValue ("ns3::ConstantRandomVariable[Constant=1]"));
   onOffHelper2.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0]"));
 
   onOffHelper2.SetAttribute ("DataRate", StringValue ("54001100bps"));
   onOffHelper2.SetAttribute ("StartTime", TimeValue (Seconds (1.001)));
-  cbrApps.Add (onOffHelper2.Install (nodes.Get (1)));*/
+  cbrApps.Add (onOffHelper2.Install (nodes.Get (1)));
 
   // we also use separate UDP applications that will send a single
   // packet before the CBR flows start. 
@@ -175,23 +175,23 @@ void experiment (bool enableCtsRts, uint32_t d1, uint32_t d2)
   echoClientHelper.SetAttribute ("PacketSize", UintegerValue (10));
   ApplicationContainer pingApps;
 
-  /*UdpEchoClientHelper echoClientHelper2 (Ipv4Address ("10.0.0.1"), echoPort);
+  UdpEchoClientHelper echoClientHelper2 (Ipv4Address ("10.0.0.3"), echoPort);
   echoClientHelper2.SetAttribute ("MaxPackets", UintegerValue (1));
   echoClientHelper2.SetAttribute ("Interval", TimeValue (Seconds (0.1)));
-  echoClientHelper2.SetAttribute ("PacketSize", UintegerValue (10));*/
+  echoClientHelper2.SetAttribute ("PacketSize", UintegerValue (10));
 
   // again using different start times to workaround Bug 388 and Bug 912
   echoClientHelper.SetAttribute ("StartTime", TimeValue (Seconds (0.001)));
   pingApps.Add (echoClientHelper.Install (nodes.Get (0))); 
-  //echoClientHelper2.SetAttribute ("StartTime", TimeValue (Seconds (0.006)));
-  //pingApps.Add (echoClientHelper.Install (nodes.Get (1)));
+  echoClientHelper2.SetAttribute ("StartTime", TimeValue (Seconds (0.006)));
+  pingApps.Add (echoClientHelper.Install (nodes.Get (1)));
 
   // 8. Install FlowMonitor on all nodes
   FlowMonitorHelper flowmon;
   Ptr<FlowMonitor> monitor = flowmon.InstallAll ();
 
   // 9. Run simulation for 60 seconds
-  Simulator::Stop (Seconds (10));
+  Simulator::Stop (Seconds (2));
   Simulator::Run ();
 
   // 10. Print per flow statistics
@@ -202,13 +202,13 @@ void experiment (bool enableCtsRts, uint32_t d1, uint32_t d2)
   for (std::map<FlowId, FlowMonitor::FlowStats>::const_iterator i = stats.begin (); i != stats.end (); ++i)
     {
       // first 2 FlowIds are for ECHO apps, we don't want to display them
-      if (i->first > 1)
+      if (i->first > 0)
         {
           Ipv4FlowClassifier::FiveTuple t = classifier->FindFlow (i->first);
-          std::cout << "Flow " << i->first - 2 << " (" << t.sourceAddress << " -> " << t.destinationAddress << ")\n";
+          std::cout << "Flow " << i->first - 0 << " (" << t.sourceAddress << " -> " << t.destinationAddress << ")\n";
           std::cout << "  Tx Bytes:   " << i->second.txBytes << "\n";
           std::cout << "  Rx Bytes:   " << i->second.rxBytes << "\n";
-          std::cout << "  Throughput: " << i->second.rxBytes * 8.0 / 9.0 / 1024 / 1024  << " Mbps\n"; //60s fim da simulacao - 1s inicio dos fluxos
+          std::cout << "  Throughput: " << i->second.rxBytes * 8.0 / 1.0 / 1024 / 1024  << " Mbps\n"; //60s fim da simulacao - 1s inicio dos fluxos
           //vazao = vazao + (i->second.rxBytes * 8.0 / 59.0 / 1024 / 1024);
         }
     }
